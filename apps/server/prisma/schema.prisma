@@ -1,0 +1,270 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  username      String   @unique
+  displayName   String
+  passwordHash  String
+  avatar        String?
+  level         Int      @default(1)
+  totalXP       Int      @default(0)
+  totalCoins    Int      @default(0)
+  availableCoins Int     @default(0)
+  currentStreak Int      @default(0)
+  longestStreak Int      @default(0)
+  familyId      String?
+  role          Role     @default(CHILD)
+  isActive      Boolean  @default(true)
+  lastActiveAt  DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relationships
+  family              Family?             @relation(fields: [familyId], references: [id])
+  createdFamilies     Family[]            @relation("FamilyCreator")
+  createdQuests       Quest[]             @relation("QuestCreator")
+  assignedQuests      Quest[]             @relation("QuestAssignee")
+  completions         QuestCompletion[]
+  createdRewards      Reward[]            @relation("RewardCreator")
+  redemptions         RewardRedemption[]
+  achievements        UserAchievement[]
+  activityFeed        ActivityFeedItem[]
+
+  @@map("users")
+}
+
+model Family {
+  id          String        @id @default(cuid())
+  name        String
+  description String?
+  inviteCode  String        @unique
+  settings    Json          // FamilySettings as JSON
+  createdBy   String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relationships
+  members     User[]
+  creator     User          @relation("FamilyCreator", fields: [createdBy], references: [id])
+  quests      Quest[]
+  rewards     Reward[]
+
+  @@map("families")
+}
+
+model Quest {
+  id                String            @id @default(cuid())
+  title             String
+  description       String?
+  category          QuestCategory
+  difficulty        QuestDifficulty
+  xpReward          Int
+  coinReward        Int
+  requiresPhoto     Boolean           @default(false)
+  isRecurring       Boolean           @default(false)
+  recurringPattern  Json?             // RecurringPattern as JSON
+  deadline          DateTime?
+  assignedTo        String?
+  createdBy         String
+  familyId          String
+  status            QuestStatus       @default(ACTIVE)
+  completedAt       DateTime?
+  verificationPhoto String?
+  streakCount       Int               @default(0)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  // Relationships
+  assignee          User?             @relation("QuestAssignee", fields: [assignedTo], references: [id])
+  creator           User              @relation("QuestCreator", fields: [createdBy], references: [id])
+  family            Family            @relation(fields: [familyId], references: [id])
+  completions       QuestCompletion[]
+
+  @@map("quests")
+}
+
+model QuestCompletion {
+  id                String   @id @default(cuid())
+  questId           String
+  userId            String
+  completedAt       DateTime @default(now())
+  verificationPhoto String?
+  xpEarned          Int
+  coinsEarned       Int
+  streakBonus       Boolean  @default(false)
+  notes             String?
+
+  // Relationships
+  quest             Quest    @relation(fields: [questId], references: [id])
+  user              User     @relation(fields: [userId], references: [id])
+
+  @@unique([questId, userId])
+  @@map("quest_completions")
+}
+
+model Reward {
+  id                  String             @id @default(cuid())
+  title               String
+  description         String?
+  cost                Int
+  category            RewardCategory
+  isAvailable         Boolean            @default(true)
+  isRedeemable        Boolean            @default(true)
+  maxRedemptions      Int?
+  currentRedemptions  Int                @default(0)
+  familyId            String
+  createdBy           String
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  // Relationships
+  family              Family             @relation(fields: [familyId], references: [id])
+  creator             User               @relation("RewardCreator", fields: [createdBy], references: [id])
+  redemptions         RewardRedemption[]
+
+  @@map("rewards")
+}
+
+model RewardRedemption {
+  id           String            @id @default(cuid())
+  rewardId     String
+  userId       String
+  status       RedemptionStatus  @default(PENDING)
+  requestedAt  DateTime          @default(now())
+  approvedAt   DateTime?
+  fulfilledAt  DateTime?
+  notes        String?
+  approvedBy   String?
+
+  // Relationships
+  reward       Reward            @relation(fields: [rewardId], references: [id])
+  user         User              @relation(fields: [userId], references: [id])
+
+  @@map("reward_redemptions")
+}
+
+model Achievement {
+  id          String                @id @default(cuid())
+  title       String
+  description String
+  icon        String
+  category    AchievementCategory
+  criteria    Json                  // Achievement criteria as JSON
+  isActive    Boolean               @default(true)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  // Relationships
+  userAchievements UserAchievement[]
+
+  @@map("achievements")
+}
+
+model UserAchievement {
+  id            String      @id @default(cuid())
+  userId        String
+  achievementId String
+  unlockedAt    DateTime    @default(now())
+  progress      Int?
+  maxProgress   Int?
+
+  // Relationships
+  user          User        @relation(fields: [userId], references: [id])
+  achievement   Achievement @relation(fields: [achievementId], references: [id])
+
+  @@unique([userId, achievementId])
+  @@map("user_achievements")
+}
+
+model ActivityFeedItem {
+  id        String       @id @default(cuid())
+  type      ActivityType
+  userId    String
+  message   String
+  metadata  Json         // Additional data as JSON
+  timestamp DateTime     @default(now())
+
+  // Relationships
+  user      User         @relation(fields: [userId], references: [id])
+
+  @@map("activity_feed")
+}
+
+// Enums
+enum Role {
+  PARENT
+  CHILD
+  ADMIN
+}
+
+enum QuestCategory {
+  CHORES
+  HOMEWORK
+  EXERCISE
+  CREATIVITY
+  KINDNESS
+  LEARNING
+  HEALTH
+  CUSTOM
+}
+
+enum QuestDifficulty {
+  EASY
+  MEDIUM
+  HARD
+  EPIC
+}
+
+enum QuestStatus {
+  ACTIVE
+  COMPLETED
+  FAILED
+  PENDING_VERIFICATION
+  VERIFIED
+}
+
+enum RewardCategory {
+  SCREEN_TIME
+  TREATS
+  ACTIVITIES
+  PRIVILEGES
+  MONEY
+  CUSTOM
+}
+
+enum RedemptionStatus {
+  PENDING
+  APPROVED
+  FULFILLED
+  REJECTED
+}
+
+enum AchievementCategory {
+  STREAKS
+  QUESTS
+  XP
+  TEAMWORK
+  CONSISTENCY
+  SPECIAL
+}
+
+enum ActivityType {
+  QUEST_COMPLETED
+  QUEST_CREATED
+  LEVEL_UP
+  STREAK_MILESTONE
+  REWARD_REDEEMED
+  ACHIEVEMENT_UNLOCKED
+  JOINED_FAMILY
+}
